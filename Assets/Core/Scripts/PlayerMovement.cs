@@ -17,18 +17,77 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] float airDrag = 2f;
 
     [Header("Jumping")]
-    public float jumpForce = 15f;
+    [SerializeField] float jumpForce = 15f;
 
     [Header("Ground Detection")]
-    bool isGrounded;
-    float groundDistance = 0.4f;
-    float playerHeight = 2f;
     [SerializeField] LayerMask groundMask;
+    [SerializeField] float groundCheckRadius = 0.4f;
+    [SerializeField] float groundCheckOffset = 0.1f;
+    [SerializeField] float groundMoveDownForce = 80f;
+    Collider[] groundCheckCollidingWith;
+    List<Collider> colliderColldingWith = new List<Collider>();
+    bool isGrounded;
+    float playerHeight = 2f;
+
+    [Header("Slopes")]
+    [SerializeField] float slopeRaycastExtention = 0.8f;
+    [SerializeField] float maxSlopeAngle = 60f;
+    [SerializeField] float slopeHopCounterForce = 85f;
+    [SerializeField] float slopeHopHitDistance = .1f;
+    RaycastHit currentSlopeRaycastHit;
+    Vector3 groundSlopeDirection;
+    float groundSlopeAngle;
+    float minSlopeHopSpeed = .5f;
+    float maxSlopeHopSpeed = 100f;
 
     Vector3 moveDirection;
+    Vector3 slopeMoveDirection;
 
     Rigidbody rigidbody;
     PlayerInput playerInput;
+
+    private bool CanWalkSlope()
+    {
+        if(groundSlopeAngle <= maxSlopeAngle)
+        {
+            return true;
+        }
+        return false;
+    }
+
+    private bool DetectSlope()
+    {
+        if(Physics.Raycast(transform.position, Vector3.down, out currentSlopeRaycastHit, (playerHeight / 2) + slopeRaycastExtention, groundMask))
+        {
+            if(currentSlopeRaycastHit.normal != Vector3.up)
+            {
+                Vector3 slopeCross = Vector3.Cross(currentSlopeRaycastHit.normal, Vector3.down);
+                groundSlopeDirection = Vector3.Cross(slopeCross, currentSlopeRaycastHit.normal);
+                groundSlopeAngle = Vector3.Angle(currentSlopeRaycastHit.normal, Vector3.up);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private bool DetectGroundCheckMatchesCollision()
+    {
+        foreach(Collider c in groundCheckCollidingWith)
+        {
+            foreach(Collider c2 in colliderColldingWith)
+            {
+                if(c == c2)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     // Start is called before the first frame update
     void Start()
@@ -40,35 +99,28 @@ public class PlayerMovement : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        isGrounded = Physics.CheckSphere(transform.position - ((Vector3.up * playerHeight) / 2), groundDistance, groundMask);
+        groundCheckCollidingWith = Physics.OverlapSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius, groundMask);
+        isGrounded = groundCheckCollidingWith.Length > 0;
 
+        CanWalkSlope();
         ProcessInput();
         SwitchDrag();
 
-        if(playerInput.jumpInput && isGrounded)
+        if(playerInput.jumpInput && isGrounded && (DetectSlope() ? CanWalkSlope() : true))
         {
             Jump();
         }
     }
 
-    void Jump()
-    {
-        rigidbody.AddForce(transform.up * jumpForce, ForceMode.Impulse);
-    }
-
     void ProcessInput()
     {
         moveDirection = (orientation.forward * playerInput.verticalInput) + (orientation.right * playerInput.horizontalInput);
-    }
-
-    private void FixedUpdate()
-    {
-        Movement();
+        slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, currentSlopeRaycastHit.normal);
     }
 
     void SwitchDrag()
     {
-        if(isGrounded)
+        if (isGrounded)
         {
             rigidbody.drag = groundDrag;
         }
@@ -78,15 +130,76 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
+    private void FixedUpdate()
+    {
+        Movement();
+    }
+
     public void Movement()
     {
-        if(isGrounded)
+        Vector3 force;
+
+        if(isGrounded && !DetectSlope())
         {
-            rigidbody.AddForce(moveDirection.normalized * movementSpeed * movementMult, ForceMode.Acceleration);
+            force = (moveDirection.normalized * movementSpeed * movementMult);
+
+            if(!DetectGroundCheckMatchesCollision())
+            {
+                force += -transform.up * groundMoveDownForce;
+            }
+
+            if (!Physics.Raycast(transform.position - (transform.up * playerHeight) / 2 + (moveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal, slopeHopHitDistance + .1f, groundMask))
+            {
+                if (rigidbody.velocity.magnitude > minSlopeHopSpeed && rigidbody.velocity.magnitude < maxSlopeHopSpeed)
+                {
+                    force += -currentSlopeRaycastHit.normal * slopeHopCounterForce;
+                }
+            }
+
+        }
+        else if (isGrounded && DetectSlope() && CanWalkSlope())
+        {
+            force = (slopeMoveDirection.normalized * movementSpeed * movementMult);
+
+            if (!DetectGroundCheckMatchesCollision())
+            {
+                force += -transform.up * groundMoveDownForce;
+            }
+
+            if(!Physics.Raycast(transform.position - (transform.up * playerHeight) / 2 + (slopeMoveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal, slopeHopHitDistance + .2f, groundMask))
+            {
+                if(rigidbody.velocity.magnitude > minSlopeHopSpeed && rigidbody.velocity.magnitude < maxSlopeHopSpeed)
+                {
+                    force += -currentSlopeRaycastHit.normal * slopeHopCounterForce;
+                }
+            }
         }
         else
         {
-            rigidbody.AddForce(moveDirection.normalized * movementSpeed * movementMult * airResistance + gravity, ForceMode.Acceleration);
+            force = (moveDirection.normalized * movementSpeed * movementMult * airResistance + gravity);
         }
+
+        rigidbody.AddForce(force, ForceMode.Acceleration);
+    }
+
+    void Jump()
+    {
+        rigidbody.AddForce(transform.up * jumpForce, ForceMode.Impulse);
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        colliderColldingWith.Add(collision.collider);
+    }
+
+    private void OnCollisionExit(Collision collision)
+    {
+        if (colliderColldingWith.Contains(collision.collider)) colliderColldingWith.Remove(collision.collider);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.DrawWireSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius);
+        Gizmos.DrawRay(transform.position - (Vector3.up * playerHeight) / 2 + (moveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal);
     }
 }
