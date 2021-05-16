@@ -40,6 +40,12 @@ public class PlayerMovement : MonoBehaviour
     float minSlopeHopSpeed = .5f;
     float maxSlopeHopSpeed = 100f;
 
+    [Header("Stairs")]
+    [SerializeField] float maxStepHeight = .5f;
+    [SerializeField] float stepRayLength = .6f;
+    [SerializeField] int stepRaysAmount = 10;
+    int highestStepRay;
+
     Vector3 moveDirection;
     Vector3 slopeMoveDirection;
 
@@ -59,7 +65,7 @@ public class PlayerMovement : MonoBehaviour
     {
         if(Physics.Raycast(transform.position, Vector3.down, out currentSlopeRaycastHit, (playerHeight / 2) + slopeRaycastExtention, groundMask))
         {
-            if(currentSlopeRaycastHit.normal != Vector3.up)
+            if(!Mathf.Approximately(Vector3.Dot(currentSlopeRaycastHit.normal, Vector3.up), 1f))
             {
                 Vector3 slopeCross = Vector3.Cross(currentSlopeRaycastHit.normal, Vector3.down);
                 groundSlopeDirection = Vector3.Cross(slopeCross, currentSlopeRaycastHit.normal);
@@ -89,6 +95,24 @@ public class PlayerMovement : MonoBehaviour
         return false;
     }
 
+    private bool DetectStair()
+    {
+        for (int i = 0; i <= stepRaysAmount; i++)
+        {
+            Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
+
+            if (Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), stepRayLength, groundMask))
+            {
+                highestStepRay = i;
+            }
+        }
+
+        if (highestStepRay == stepRaysAmount) highestStepRay = 0;
+        if (highestStepRay != 0) return true;
+
+        return false;
+    }
+
     // Start is called before the first frame update
     void Start()
     {
@@ -99,9 +123,6 @@ public class PlayerMovement : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        groundCheckCollidingWith = Physics.OverlapSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius, groundMask);
-        isGrounded = groundCheckCollidingWith.Length > 0;
-
         CanWalkSlope();
         ProcessInput();
         SwitchDrag();
@@ -132,7 +153,16 @@ public class PlayerMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
+        groundCheckCollidingWith = Physics.OverlapSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius, groundMask);
+        isGrounded = groundCheckCollidingWith.Length > 0;
+
         Movement();
+
+        if (DetectStair() && isGrounded && !DetectSlope() && rigidbody.velocity.magnitude > .5f)
+        {
+            print(highestStepRay);
+            rigidbody.position = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)(highestStepRay + 1) / (float)stepRaysAmount)));
+        }
     }
 
     public void Movement()
@@ -165,6 +195,7 @@ public class PlayerMovement : MonoBehaviour
             {
                 force += -transform.up * groundMoveDownForce;
             }
+
 
             if(!Physics.Raycast(transform.position - (transform.up * playerHeight) / 2 + (slopeMoveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal, slopeHopHitDistance + .2f, groundMask))
             {
@@ -201,5 +232,12 @@ public class PlayerMovement : MonoBehaviour
     {
         Gizmos.DrawWireSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius);
         Gizmos.DrawRay(transform.position - (Vector3.up * playerHeight) / 2 + (moveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal);
+
+        for (int i = 0; i <= stepRaysAmount; i++)
+        {
+            Vector3 linePos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
+
+            Gizmos.DrawLine(linePos, linePos + Vector3.right);
+        }
     }
 }
