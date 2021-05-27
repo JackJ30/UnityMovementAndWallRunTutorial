@@ -97,6 +97,7 @@ public class PlayerMovement : MonoBehaviour
 
     private bool DetectStair()
     {
+        highestStepRay = 0;
         for (int i = 0; i <= stepRaysAmount; i++)
         {
             Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
@@ -160,8 +161,19 @@ public class PlayerMovement : MonoBehaviour
 
         if (DetectStair() && isGrounded && !DetectSlope() && rigidbody.velocity.magnitude > .5f)
         {
-            print(highestStepRay);
-            rigidbody.position = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)(highestStepRay + 1) / (float)stepRaysAmount)));
+            Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)highestStepRay / (float)stepRaysAmount)));
+            RaycastHit hit;
+
+            float forwardDistance;
+            if(Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, 20f, groundMask))
+            {
+                forwardDistance = hit.distance / 2;
+            }
+            else
+            {
+                forwardDistance = .2f;
+            }
+            rigidbody.position += (Vector3.up * (maxStepHeight * ((float)(highestStepRay + 1) / (float)stepRaysAmount))) + rigidbody.velocity.normalized * forwardDistance;
         }
     }
 
