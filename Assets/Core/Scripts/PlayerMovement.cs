@@ -61,6 +61,11 @@ public class PlayerMovement : MonoBehaviour
         return false;
     }
 
+    private float GetAngleFromNormal(Vector3 normal)
+    {
+        return Vector3.Angle(normal, Vector3.up);
+    }
+
     private bool DetectSlope()
     {
         if(Physics.Raycast(transform.position, Vector3.down, out currentSlopeRaycastHit, (playerHeight / 2) + slopeRaycastExtention, groundMask))
@@ -69,7 +74,7 @@ public class PlayerMovement : MonoBehaviour
             {
                 Vector3 slopeCross = Vector3.Cross(currentSlopeRaycastHit.normal, Vector3.down);
                 groundSlopeDirection = Vector3.Cross(slopeCross, currentSlopeRaycastHit.normal);
-                groundSlopeAngle = Vector3.Angle(currentSlopeRaycastHit.normal, Vector3.up);
+                groundSlopeAngle = GetAngleFromNormal(currentSlopeRaycastHit.normal);
                 return true;
             }
             else
@@ -102,9 +107,11 @@ public class PlayerMovement : MonoBehaviour
         {
             Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
 
-            if (Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), stepRayLength, groundMask))
+            RaycastHit hit;
+            if (Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, stepRayLength, groundMask))
             {
-                highestStepRay = i;
+                print(GetAngleFromNormal(hit.normal));
+                if(GetAngleFromNormal(hit.normal) > maxSlopeAngle) highestStepRay = i;
             }
         }
 
@@ -161,19 +168,21 @@ public class PlayerMovement : MonoBehaviour
 
         if (DetectStair() && isGrounded && !DetectSlope() && rigidbody.velocity.magnitude > .5f)
         {
-            Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)highestStepRay / (float)stepRaysAmount)));
-            RaycastHit hit;
+            //Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)highestStepRay / (float)stepRaysAmount)));
+            //RaycastHit hit;
 
-            float forwardDistance;
-            if(Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, 20f, groundMask))
-            {
-                forwardDistance = hit.distance / 2;
-            }
-            else
-            {
-                forwardDistance = .2f;
-            }
-            rigidbody.position += (Vector3.up * (maxStepHeight * ((float)(highestStepRay + 1) / (float)stepRaysAmount))) + rigidbody.velocity.normalized * forwardDistance;
+            //float forwardDistance;
+            //if(Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, 20f, groundMask))
+            //{
+            //    forwardDistance = hit.distance / 2;
+            //}
+            //else
+            //{
+                float forwardDistance = .3f;
+            //}
+            Vector3 forwardDirection = Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1));
+
+            rigidbody.position += (Vector3.up * (maxStepHeight * ((float)(highestStepRay) / (float)stepRaysAmount))) + forwardDirection * forwardDistance;
         }
     }
 
