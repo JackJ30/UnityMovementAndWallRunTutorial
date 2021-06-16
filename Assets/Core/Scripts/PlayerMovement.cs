@@ -178,8 +178,8 @@ public class PlayerMovement : MonoBehaviour
             //}
             //else
             //{
-                float forwardDistance = .3f;
-            //}
+            float forwardDistance = .3f;
+            //} 
             Vector3 forwardDirection = Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1));
 
             rigidbody.position += (Vector3.up * (maxStepHeight * ((float)(highestStepRay) / (float)stepRaysAmount))) + forwardDirection * forwardDistance;
