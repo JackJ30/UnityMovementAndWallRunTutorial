@@ -40,18 +40,54 @@ public class PlayerMovement : MonoBehaviour
     float minSlopeHopSpeed = .5f;
     float maxSlopeHopSpeed = 100f;
 
-    [Header("Stairs")]
+    [Header("Stairs")] 
     [SerializeField] float maxStepHeight = .5f;
     [SerializeField] float stepRayLength = .6f;
     [SerializeField] int stepRaysAmount = 10;
-    int highestStepRay;
+    private int highestStepRay;
+    private float stepRayDistance;
 
+    // Movement Direction Variables
     Vector3 moveDirection;
     Vector3 slopeMoveDirection;
-
+    
+    // Required Components
     Rigidbody rigidbody;
     PlayerInput playerInput;
 
+    #region Environment Detection
+
+    private bool DetectStair()
+    {
+        highestStepRay = 0;
+        
+        for (int i = 0; i <= stepRaysAmount; i++)
+        {
+            Vector3 playerBottom = transform.position - (transform.up * (playerHeight / 2));
+            Vector3 rayPos = playerBottom + (Vector3.up * (maxStepHeight * ((float) i / (float) stepRaysAmount)));
+
+            RaycastHit hit;
+            if (Physics.Raycast(rayPos,
+                Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)),
+                out hit,
+                stepRayLength,
+                groundMask
+            ))
+            {
+                if (GetAngleFromNormal(hit.normal) > maxSlopeAngle)
+                {
+                    highestStepRay = i;
+                    stepRayDistance = hit.distance;
+                }
+            }
+        }
+
+        if (highestStepRay == stepRaysAmount) highestStepRay = 0;
+        if (highestStepRay != 0) return true;
+
+        return false;
+    }
+    
     private bool CanWalkSlope()
     {
         if(groundSlopeAngle <= maxSlopeAngle)
@@ -65,7 +101,7 @@ public class PlayerMovement : MonoBehaviour
     {
         return Vector3.Angle(normal, Vector3.up);
     }
-
+    
     private bool DetectSlope()
     {
         if(Physics.Raycast(transform.position, Vector3.down, out currentSlopeRaycastHit, (playerHeight / 2) + slopeRaycastExtention, groundMask))
@@ -100,35 +136,16 @@ public class PlayerMovement : MonoBehaviour
         return false;
     }
 
-    private bool DetectStair()
-    {
-        highestStepRay = 0;
-        for (int i = 0; i <= stepRaysAmount; i++)
-        {
-            Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
+    #endregion
 
-            RaycastHit hit;
-            if (Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, stepRayLength, groundMask))
-            {
-                print(GetAngleFromNormal(hit.normal));
-                if(GetAngleFromNormal(hit.normal) > maxSlopeAngle) highestStepRay = i;
-            }
-        }
+    #region Unity Messages
 
-        if (highestStepRay == stepRaysAmount) highestStepRay = 0;
-        if (highestStepRay != 0) return true;
-
-        return false;
-    }
-
-    // Start is called before the first frame update
     void Start()
     {
         rigidbody = GetComponent<Rigidbody>();
         playerInput = GetComponent<PlayerInput>();
     }
-
-    // Update is called once per frame
+    
     void Update()
     {
         CanWalkSlope();
@@ -141,51 +158,16 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    void ProcessInput()
-    {
-        moveDirection = (orientation.forward * playerInput.verticalInput) + (orientation.right * playerInput.horizontalInput);
-        slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, currentSlopeRaycastHit.normal);
-    }
-
-    void SwitchDrag()
-    {
-        if (isGrounded)
-        {
-            rigidbody.drag = groundDrag;
-        }
-        else
-        {
-            rigidbody.drag = airDrag;
-        }
-    }
-
     private void FixedUpdate()
     {
         groundCheckCollidingWith = Physics.OverlapSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius, groundMask);
         isGrounded = groundCheckCollidingWith.Length > 0;
-
+        
         Movement();
-
-        if (DetectStair() && isGrounded && !DetectSlope() && rigidbody.velocity.magnitude > .5f)
-        {
-            //Vector3 rayPos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)highestStepRay / (float)stepRaysAmount)));
-            //RaycastHit hit;
-
-            //float forwardDistance;
-            //if(Physics.Raycast(rayPos, Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)), out hit, 20f, groundMask))
-            //{
-            //    forwardDistance = hit.distance / 2;
-            //}
-            //else
-            //{
-            float forwardDistance = .3f;
-            //} 
-            Vector3 forwardDirection = Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1));
-
-            rigidbody.position += (Vector3.up * (maxStepHeight * ((float)(highestStepRay) / (float)stepRaysAmount))) + forwardDirection * forwardDistance;
-        }
     }
-
+    
+    #endregion
+    
     public void Movement()
     {
         Vector3 force;
@@ -217,7 +199,6 @@ public class PlayerMovement : MonoBehaviour
                 force += -transform.up * groundMoveDownForce;
             }
 
-
             if(!Physics.Raycast(transform.position - (transform.up * playerHeight) / 2 + (slopeMoveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal, slopeHopHitDistance + .2f, groundMask))
             {
                 if(rigidbody.velocity.magnitude > minSlopeHopSpeed && rigidbody.velocity.magnitude < maxSlopeHopSpeed)
@@ -234,14 +215,51 @@ public class PlayerMovement : MonoBehaviour
         rigidbody.AddForce(force, ForceMode.Acceleration);
     }
 
+    void MoveUpSteps()
+    {
+        if (DetectStair() && isGrounded && !DetectSlope() && rigidbody.velocity.magnitude > .3f)
+        {
+            float forwardDistance = .01f + stepRayDistance;
+
+            Vector3 forwardMovement =
+                Vector3.Scale(rigidbody.velocity.normalized, new Vector3(1, 0, 1)) * forwardDistance;
+            float percentageUp = ((float) (highestStepRay) / (float) stepRaysAmount);
+            Vector3 upwardMovement = Vector3.up * (maxStepHeight * percentageUp);
+
+            rigidbody.position += upwardMovement + forwardMovement;
+        }
+    }
+
+    void ProcessInput()
+    {
+        moveDirection = (orientation.forward * playerInput.verticalInput) + (orientation.right * playerInput.horizontalInput);
+        slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, currentSlopeRaycastHit.normal);
+    }
+
+    void SwitchDrag()
+    {
+        if (isGrounded)
+        {
+            rigidbody.drag = groundDrag;
+        }
+        else
+        {
+            rigidbody.drag = airDrag;
+        }
+    }
+
     void Jump()
     {
         rigidbody.AddForce(transform.up * jumpForce, ForceMode.Impulse);
     }
 
+    #region Unity Event Functions
+
     private void OnCollisionEnter(Collision collision)
     {
         colliderColldingWith.Add(collision.collider);
+        
+        MoveUpSteps();
     }
 
     private void OnCollisionExit(Collision collision)
@@ -249,16 +267,11 @@ public class PlayerMovement : MonoBehaviour
         if (colliderColldingWith.Contains(collision.collider)) colliderColldingWith.Remove(collision.collider);
     }
 
+    #endregion
+
     private void OnDrawGizmosSelected()
     {
         Gizmos.DrawWireSphere(transform.position - ((transform.up * playerHeight) / 2) + (groundCheckOffset * transform.up), groundCheckRadius);
         Gizmos.DrawRay(transform.position - (Vector3.up * playerHeight) / 2 + (moveDirection * slopeHopHitDistance) + (transform.up * slopeHopHitDistance), -currentSlopeRaycastHit.normal);
-
-        for (int i = 0; i <= stepRaysAmount; i++)
-        {
-            Vector3 linePos = (transform.position - (transform.up * playerHeight) / 2) + (Vector3.up * (maxStepHeight * ((float)i / (float)stepRaysAmount)));
-
-            Gizmos.DrawLine(linePos, linePos + Vector3.right);
-        }
     }
 }
